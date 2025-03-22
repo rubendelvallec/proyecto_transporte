@@ -19,26 +19,32 @@ class Paquete:
 
 
 class Pedido:
-    def __init__(self, id, paquetes, canalEntrada, modalidadEnvio, km, destino):
-        self.id = id
-        self.paquetes = paquetes
+    def __init__(self, cliente, canalEntrada, modalidadEnvio, km, destino):
+        self.cliente = cliente
         self.canalEntrada = canalEntrada
         self.modalidadEnvio = modalidadEnvio
         self.km = km
         self.destino = destino
         self.viaje = None
 
+        self.Paquetes: Dict[Paquete, int] = dict()
     
     def __str__(self):
 
-        return f"Pedido {self.id} de cliente {self.paquetes}, con canal de entrada {self.canalEntrada}, por {self.modalidadEnvio}, a {self.destino} a {self.km} km añadidos al viaje {self.viaje}\n"
+        return f"Pedido de cliente {self.cliente}, con canal de entrada {self.canalEntrada}, por {self.modalidadEnvio}, a {self.destino} a {self.km} km añadidos al viaje {self.viaje}\n"
+
+    def AgregarPaquete(self, paquete):
+        if paquete not in self.Paquetes:
+            self.Paquetes[paquete] = 1
+        else:
+            self.Paquetes[paquete] += 1
 
 
     def Coste(self):
         costetotal = 0
-        for paquete in self.paquetes:
+        for paquete in self.Paquetes.keys():
 
-            costetotal += paquete.Precio()
+            costetotal += paquete.Precio()*self.Paquetes[paquete]
         
         if self.modalidadEnvio ==  "Domicilio":
             costetotal += 5.5
@@ -47,8 +53,8 @@ class Pedido:
     
     def Peso(self):
         peso = 0
-        for paquete in self.paquetes:
-            peso += paquete.peso
+        for paquete in self.Paquetes.keys():
+            peso += paquete.peso * self.Paquetes[paquete]
         return peso
 
 
@@ -94,7 +100,7 @@ class Furgoneta(Motorizado):
     def __init__(self, cargaMaxima, modelo):
         super().__init__(cargaMaxima, modelo)
 
-    def _str_(self):
+    def __str__(self):
         return "Furgoneta: " + super().__str__()
 
 class BicicletaElectrica(Motorizado, Ecologico):
@@ -109,7 +115,7 @@ class Camion(Motorizado):
         super().__init__(cargaMaxima, modelo)
 
     def __str__(self):
-        return "Camion: " + super()._str_()
+        return "Camion: " + super().__str__()
 
 class Bicicleta(Ecologico):
     def __init__(self, cargaMaxima, modelo):
@@ -117,6 +123,7 @@ class Bicicleta(Ecologico):
 
     def __str__(self):
         return "Bicicleta: " + super().__str__()
+
 class Viaje:
     todos_los_viajes = []
     def __init__(self, id):
@@ -137,13 +144,23 @@ class Viaje:
         for v in self.trabajadores:
             txt2 += str(v) + "\n"
         
-        return f"Viaje {self.id} en el vehiculo {self.vehiculo} \n" + txt1 + txt2
+        txt3 = "** Parte de viaje ** \n"
+        if self.ParteViaje != None:
+    
+            for i in self.ParteViaje.incidencias:
+                txt3 += (f'Incidente : {i}, Observacion:{self.ParteViaje.incidencias[i]}' ) + "\n"
+        
+        return f"Viaje {self.id} en el vehiculo {self.vehiculo} \n" + txt1 + txt2 + txt3
     
     def AñadirPedido(self, pedido):
-    
-        peso_total = sum([p.Peso() for p in self.pedidos]) + pedido.Peso()
-        if peso_total > 3500:  # Por ejemplo, no puede superar los 3500 kg
-            raise Exception(f"El viaje {self.id} está completo, no puede añadir más pedidos.")
+        peso = 0
+        for pedido1 in self.pedidos:
+            peso += pedido1.Peso()
+
+        if peso + pedido.Peso() > 3500 :
+
+            raise Exception(f"El viaje {self.id} esta completo, por favor busque otro viaje disponible")
+            
         self.pedidos.append(pedido)
         pedido.viaje = self.id
         
@@ -157,6 +174,7 @@ class Viaje:
                 self.vehiculo = vehiculo
                 self.vehiculo.disponible = False
                 break
+        return Exception(f"No hay vehiculos para seleccionar")
     
     def SeleccionTrabajadores(self):
         if len(Mixto.MixtosDisponibles()) > 0:
@@ -164,61 +182,69 @@ class Viaje:
             self.trabajadores.append(contratado)
             contratado.viaje = self
             contratado.disponible = False
-        else:
+        elif len(Conductor.conductoresDisponibles()) > 0 and len(Ayudante.AyudantesDisponibles()) > 0:
             self.trabajadores.append(Conductor.conductoresDisponibles()[0])
             Conductor.conductoresDisponibles()[0].viaje = self
             Conductor.conductoresDisponibles()[0].disponible = False
             self.trabajadores.append(Ayudante.AyudantesDisponibles()[0])
             Ayudante.AyudantesDisponibles()[0].viaje = self
             Ayudante.AyudantesDisponibles()[0].disponible = False
-
+        else:
+            return Exception(f"No hay suficientes trabajadores para hacer un viaje")
+    
     def FinViaje(self):
+        if self.vehiculo.UbicacionActual() == 0:
+            return Exception(f"El viaje {self.id} no ha salido todavia")
         self.vehiculo.disponible = True
         for trabajador in self.trabajadores:
             trabajador.disponible = True
         self.vehiculo.ubicacion = 0
 
     def IniciarViaje(self):
+        if len(self.pedidos) == 0:
+            return Exception(f"El viaje {self.id} no saldrá por que no tiene pedidos asignados")
         self.SeleccionVehiculo()
         self.SeleccionTrabajadores()
         self.vehiculo.disponible = False
         self.vehiculo.ubicacion = 1
 
     def VerParte(self):
+        if self.ParteViaje == None:
+            return Exception(f"No hay parte del viaje {self.id}")
         for i in self.ParteViaje.incidencias:
             print(f'Incidente : {i}, Observacion:{self.ParteViaje.incidencias[i]}')
 
 
 
 class Cliente:
-    def __init__(self, nombre, id):
+    def __init__(self, id):
         self.id = id
-        self.nombre = nombre
         self.listaPedidos: List[Pedido] = list()
         self.paquetes = []
     
     def __str__(self):
-        return f"Cliente {self.nombre} con dni {self.id} "
-
-    def AñadirPaquetes(self, paquete):
+        return f"Cliente {self.id} "
+    def AñadirPaquetes(self,paquete):
         self.paquetes.append(paquete)
+    def HacerPedido(self, paquetes, canalEntrada, modalidadEnvio, km, destino):
 
-    def HacerPedido(self, pedido):
-        # Crear un nuevo pedido
+        pedido = Pedido(len(self.listaPedidos),  canalEntrada, modalidadEnvio, km, destino)
         self.listaPedidos.append(pedido)
-        viaje_asignado = False
-        for viaje in Viaje.todos_los_viajes:
-            try:
-                viaje.AñadirPedido(pedido)  # Añadir el pedido al viaje
-                pedido.viaje = viaje.id  # Asociar el pedido con el viaje
-                viaje_asignado = True
-                break  # Salir del ciclo si el pedido fue agregado
-            except Exception:
-                continue  # Si el viaje está completo, probar con el siguiente viaje
 
-        # Si no se asignó el pedido a ningún viaje, lanzar excepción
-        if not viaje_asignado:
-            print("No se pudo asignar el pedido a ningún viaje disponible.")
+        for paquete in paquetes:
+            self.AñadirPaquetes(paquete)
+            pedido.AgregarPaquete(paquete)
+        
+        i = 0
+
+        lista_viajes = Viaje.todos_los_viajes
+        for viaje1 in lista_viajes:
+            try:
+                viaje1.AñadirPedido(pedido)
+                pedido.viaje = viaje1.id
+                break
+            except Exception:
+                continue
     
     def FacturaciónMesual(self):
         coste_total = 0
@@ -339,51 +365,71 @@ class ParteViaje():
         return f"Parte de Viaja {self.viaje}" + txt
     
     def AgregarIncidencia(self, incidencia, observacion):
-        self.incidencias[incidencia]=observacion
+        self.incidencias[incidencia] = observacion
 
 if __name__ == "__main__":
-   # Crear algunos paquetes
-    p1 = Paquete("Camisetas", 25)
-    p2 = Paquete("Zapatos", 3)
+    print("=== Creando Paquetes ===")
+    paquete1 = Paquete("Fresa",205)    # 5 kg
+    paquete2 = Paquete("Chocolate", 1110)   # 10 kg
+    paquete3 = Paquete("Agua", 2000)    # 2 kg
+    paquete4 = Paquete("Papel", 500)   # 50 kg
 
-# Crear un cliente
-    cliente = Cliente("Carlos", 1)
+    print(f"Paquete 1: {paquete1}, Precio: {paquete1.Precio()}€")
+    print(f"Paquete 2: {paquete2}, Precio: {paquete2.Precio()}€")
 
-# Añadir paquetes al cliente
-    cliente.AñadirPaquetes(p1)
-    cliente.AñadirPaquetes(p2)
+    print("\n=== Creando Clientes ===")
+    cliente1 = Cliente("C001")
+    cliente2 = Cliente("C002")
+   
 
-    conductor = Conductor('520', 3, 20)
-    ayudante = Ayudante('2920', 20)
-    pedido = Pedido(cliente.id, cliente.paquetes, canalEntrada.FAX, 'domicilio', 20, 'Madrid')
-# Hacer un pedido con el cliente
-    cliente.HacerPedido(pedido)
-# Crear vehículos
-    v1 = Bicicleta(20, "Bici Verde")
-    v2 = Camion(4000, "Camión Rojo")
+    print("\n=== Creando Vehículos ===")
+    furgoneta = Furgoneta(3000, "Ford Transit")
+    camion = Camion(5000, "Volvo FH16")
+    bici_electrica = BicicletaElectrica(20, "E-Bike Pro")
+    bicicleta = Bicicleta(10, "Classic Bike")
+  
+    print("\n=== Creando Trabajadores ===")
+    conductor = Conductor("T001", 5, 10)
+    ayudante = Ayudante("T002", 2)
+    mixto = Mixto("T003", 3, 7)
 
-# Crear un viaje
-    viaje1 = Viaje(100)
+    viaje1 = Viaje(1)
+    viaje2 = Viaje(2)
+    
 
-# Iniciar el viaje
+    print("\n=== Cliente 1 Hace Pedidos ===")
+    cliente1.HacerPedido((paquete1, paquete2), canalEntrada=canalEntrada.TELEFONO, modalidadEnvio="Sucursal", km=20, destino="Madrid")
+    cliente1.HacerPedido((paquete3, paquete1), canalEntrada=canalEntrada.IMPRESOS, modalidadEnvio="Domicilio", km=10, destino="Barcelona")
+  
+    print("\n=== Cliente 2 Hace un Pedido Grande ===")
+    cliente2.HacerPedido((paquete4, paquete4), canalEntrada=canalEntrada.FAX, modalidadEnvio="Sucursal", km=50, destino="Sevilla")
+    
+    print("\n=== Mostrando Costes de Pedidos ===")
+    print(f'El coste total de los pedidos del primer cliente es {cliente1.FacturaciónMesual()}')
+    print(f'El coste total de los pedidos del segundo cliente es {cliente2.FacturaciónMesual()}')
+
     viaje1.IniciarViaje()
+    viaje2.IniciarViaje()
 
-# Mostrar información del viaje y los paquetes
-    print("Viaje Iniciado")
-    print(viaje1)
-    print("Pedidos del viaje:")
-    for pedido in viaje1.pedidos:
-       print(pedido)
-
-# Ver facturación mensual del cliente
-    print("\nFacturación mensual del cliente:", cliente.FacturaciónMesual())
-
-# Marcar incidencia en el viaje
-    ayudante.IncidenciaViaje("Robo", "Faltan paquetes en destino")
-
-    print(v1.UbicacionActual())
-
-# Ver el parte del viaje
-    print("\nParte del viaje:")
+    print(camion.UbicacionActual())
+    print(furgoneta.UbicacionActual())
+    
     viaje1.FinViaje()
-    viaje1.VerParte()
+    print("\n Detalles del viaje 1")
+    print(viaje1)
+ 
+    ayudante.IncidenciaViaje("Retraso", "Accidente en la carretera")
+    ayudante.IncidenciaViaje("Paquete dañado", "Caja aplastada")
+
+    print(camion.UbicacionActual())
+    print(furgoneta.UbicacionActual())
+    viaje2.FinViaje()
+    print("\n Detalles del viaje 2")
+    print(viaje2)
+
+ 
+    print("\n=== Verificando Vehículos Disponibles ===")
+    print("Vehículos disponibles:", [str(v) for v in Vehiculo.VehiculosDisponibles()])
+
+    print("\n=== Verificando Trabajadores Disponibles ===")
+    print("Trabajadores disponibles:", [str(m) for m in Mixto.MixtosDisponibles()] + [str(a) for a in Ayudante.AyudantesDisponibles()] + [str(c) for c in Conductor.conductoresDisponibles()])
